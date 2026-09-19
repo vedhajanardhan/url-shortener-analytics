@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="url-shortener"/>
+
+    <!-- Local/dev: human-readable console output -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Production: structured, one-line-per-event logs that are easy to grep/
+         ingest into a log aggregator (Render's log stream, Datadog, etc.).
+         Hand-rolled key=value pairs rather than pulling in a JSON logging
+         library - this app has no other use for one. Activated by setting
+         SPRING_PROFILES_ACTIVE=prod (see .env.example / Render setup). -->
+    <appender name="STRUCTURED" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>ts=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%-5level logger=%logger{36} thread=%thread app=${appName} msg="%replace(%msg){'"', '\\"'}" %ex{full}%n</pattern>
+        </encoder>
+    </appender>
+
+    <springProfile name="!prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="STRUCTURED"/>
+        </root>
+    </springProfile>
+
+    <!-- Spring Boot still applies logging.level.* from application.yml on top
+         of whichever appender is active above, so env vars like LOG_LEVEL_APP
+         continue to work without needing to be wired through here. -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.apache.kafka" level="WARN"/>
+</configuration>

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>URL Shortener — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#0f1117; --card:#171a23; --border:#262a36; --text:#e7e9ee; --muted:#8b90a0; --accent:#6366f1; --danger:#ef4444; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding: 20px 32px; border-bottom: 1px solid var(--border); display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content: space-between; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  input, select { background:var(--card); border:1px solid var(--border); color:var(--text); padding:10px 14px; border-radius:8px; font-size:14px; }
+  button { background:var(--accent); border:none; color:white; padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer; font-weight:600; }
+  button.secondary { background: transparent; border:1px solid var(--border); color: var(--text); }
+  button.danger { background: var(--danger); }
+  button:hover { opacity:0.9; }
+  main { padding: 24px 32px; display:grid; gap:20px; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); margin:0 0 16px; }
+  .stat { font-size:40px; font-weight:700; }
+  .stat-label { color:var(--muted); font-size:13px; margin-top:4px; }
+  .wide { grid-column: 1 / -1; }
+  canvas { max-height: 280px; }
+  .qr-box { display:flex; align-items:center; gap:20px; }
+  .qr-box img { border-radius:8px; background:white; padding:8px; }
+  .empty { color:var(--muted); font-size:14px; padding:20px 0; text-align:center; }
+  a.short-link { color: var(--accent); text-decoration:none; word-break: break-all; }
+  #error { color:#f87171; font-size:14px; padding: 8px 32px; display:none; }
+  .auth-box { max-width:380px; margin:60px auto; }
+  .auth-box input { width:100%; margin-bottom:10px; }
+  .auth-box button { width:100%; }
+  .tab-row { display:flex; gap:8px; margin-bottom:16px; }
+  .tab-row button { flex:1; }
+  .url-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); gap:12px; }
+  .url-row .meta { font-size:13px; color:var(--muted); }
+  .create-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .create-row input { flex:1; min-width:200px; }
+  #userBar { display:flex; align-items:center; gap:12px; font-size:14px; }
+</style>
+</head>
+<body>
+
+<div id="authScreen" class="auth-box">
+  <div class="card">
+    <div class="tab-row">
+      <button id="tabLogin" onclick="switchTab('login')">Log In</button>
+      <button id="tabRegister" class="secondary" onclick="switchTab('register')">Register</button>
+    </div>
+    <div id="loginForm">
+      <input id="loginUsername" placeholder="Username" />
+      <input id="loginPassword" type="password" placeholder="Password" />
+      <button onclick="login()">Log In</button>
+    </div>
+    <div id="registerForm" style="display:none">
+      <input id="registerUsername" placeholder="Username" />
+      <input id="registerEmail" type="email" placeholder="Email" />
+      <input id="registerPassword" type="password" placeholder="Password (min 8 chars)" />
+      <button onclick="register()">Create Account</button>
+    </div>
+    <div id="authError" style="color:#f87171;font-size:13px;margin-top:10px;display:none"></div>
+  </div>
+</div>
+
+<div id="appScreen" style="display:none">
+  <header>
+    <h1>🔗 URL Analytics</h1>
+    <div id="userBar">
+      <span id="usernameLabel" style="color:var(--muted)"></span>
+      <button class="secondary" onclick="logout()">Log Out</button>
+    </div>
+  </header>
+  <div id="error"></div>
+
+  <main>
+    <div class="card wide">
+      <h2>Create Short URL</h2>
+      <div class="create-row">
+        <input id="newLongUrl" placeholder="https://example.com/some/long/path" />
+        <input id="newAlias" placeholder="custom-alias (optional)" style="max-width:200px" />
+        <button onclick="createUrl()">Shorten</button>
+      </div>
+      <div id="createResult" class="stat-label"></div>
+    </div>
+
+    <div class="card wide">
+      <h2>Your URLs</h2>
+      <div id="urlList"><div class="empty">Loading...</div></div>
+    </div>
+
+    <div id="analyticsSection" style="display:none" class="wide" style="display:contents">
+      <div class="card">
+        <h2>Total Clicks</h2>
+        <div class="stat" id="totalClicks">0</div>
+        <div class="stat-label" id="longUrlLabel"></div>
+      </div>
+
+      <div class="card">
+        <h2>QR Code</h2>
+        <div class="qr-box">
+          <img id="qrImage" width="120" height="120" alt="QR code" />
+          <div>
+            <div class="stat-label">Scan to open the destination URL</div>
+            <a class="short-link" id="shortLink" href="#" target="_blank"></a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <h2>Clicks Over Time</h2>
+        <canvas id="timeChart"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Devices</h2>
+        <canvas id="deviceChart"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Browsers</h2>
+        <canvas id="browserChart"></canvas>
+      </div>
+
+      <div class="card">
+        <h2>Top Referrers</h2>
+        <div id="referrerList"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+let charts = {};
+let token = localStorage.getItem('jwt');
+let username = localStorage.getItem('username');
+
+function switchTab(tab) {
+  document.getElementById('loginForm').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('registerForm').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tabLogin').className = tab === 'login' ? '' : 'secondary';
+  document.getElementById('tabRegister').className = tab === 'register' ? '' : 'secondary';
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function login() {
+  const body = {
+    username: document.getElementById('loginUsername').value.trim(),
+    password: document.getElementById('loginPassword').value,
+  };
+  await authRequest('/api/auth/login', body);
+}
+
+async function register() {
+  const body = {
+    username: document.getElementById('registerUsername').value.trim(),
+    email: document.getElementById('registerEmail').value.trim(),
+    password: document.getElementById('registerPassword').value,
+  };
+  await authRequest('/api/auth/register', body);
+}
+
+async function authRequest(path, body) {
+  try {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Authentication failed');
+    token = data.token;
+    username = data.username;
+    localStorage.setItem('jwt', token);
+    localStorage.setItem('username', username);
+    enterApp();
+  } catch (err) {
+    showAuthError(err.message);
+  }
+}
+
+function logout() {
+  localStorage.removeItem('jwt');
+  localStorage.removeItem('username');
+  token = null;
+  document.getElementById('appScreen').style.display = 'none';
+  document.getElementById('authScreen').style.display = 'block';
+}
+
+function enterApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  document.getElementById('usernameLabel').textContent = username;
+  loadUrls();
+}
+
+function authHeaders() {
+  return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+}
+
+async function createUrl() {
+  const longUrl = document.getElementById('newLongUrl').value.trim();
+  const customAlias = document.getElementById('newAlias').value.trim();
+  const resultEl = document.getElementById('createResult');
+  if (!longUrl) return;
+
+  try {
+    const res = await fetch('/api/urls', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ longUrl, customAlias: customAlias || null }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Could not create short URL');
+    resultEl.textContent = `Created: ${data.shortUrl}`;
+    document.getElementById('newLongUrl').value = '';
+    document.getElementById('newAlias').value = '';
+    loadUrls();
+  } catch (err) {
+    resultEl.textContent = err.message;
+  }
+}
+
+async function loadUrls() {
+  const listEl = document.getElementById('urlList');
+  try {
+    const res = await fetch('/api/urls', { headers: authHeaders() });
+    if (res.status === 401) { logout(); return; }
+    const urls = await res.json();
+    if (!urls.length) {
+      listEl.innerHTML = '<div class="empty">No URLs yet — create one above</div>';
+      return;
+    }
+    listEl.innerHTML = urls.map(u => `
+      <div class="url-row">
+        <div>
+          <a class="short-link" href="${u.shortUrl}" target="_blank">${u.shortUrl}</a>
+          <div class="meta">${u.longUrl}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="secondary" onclick="loadAnalytics('${u.shortCode}')">Analytics</button>
+          <button class="danger" onclick="deleteUrl('${u.shortCode}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    listEl.innerHTML = `<div class="empty">${err.message}</div>`;
+  }
+}
+
+async function deleteUrl(shortCode) {
+  if (!confirm(`Delete ${shortCode}?`)) return;
+  await fetch(`/api/urls/${shortCode}`, { method: 'DELETE', headers: authHeaders() });
+  loadUrls();
+}
+
+function destroyCharts() {
+  Object.values(charts).forEach(c => c && c.destroy());
+  charts = {};
+}
+
+function colorPalette(n) {
+  const base = ['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#a855f7','#ec4899','#84cc16'];
+  return Array.from({length:n}, (_, i) => base[i % base.length]);
+}
+
+async function loadAnalytics(shortCode) {
+  const errorBox = document.getElementById('error');
+  errorBox.style.display = 'none';
+
+  try {
+    const res = await fetch(`/api/analytics/${encodeURIComponent(shortCode)}?daysBack=30`, { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+    render(shortCode, data);
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.style.display = 'block';
+  }
+}
+
+function render(shortCode, data) {
+  document.getElementById('analyticsSection').style.display = 'contents';
+  document.getElementById('totalClicks').textContent = data.totalClicks.toLocaleString();
+  document.getElementById('longUrlLabel').textContent =
+    `${data.longUrl} (${data.totalClicksSource === 'redis-live' ? 'live' : 'reconciled'} count)`;
+
+  const shortLink = document.getElementById('shortLink');
+  shortLink.href = `/${shortCode}`;
+  shortLink.textContent = `${window.location.origin}/${shortCode}`;
+
+  document.getElementById('qrImage').src = `/api/urls/${shortCode}/qr`;
+
+  destroyCharts();
+
+  const days = Object.keys(data.clicksByDay);
+  charts.time = new Chart(document.getElementById('timeChart'), {
+    type: 'line',
+    data: {
+      labels: days.length ? days : ['No data'],
+      datasets: [{
+        label: 'Clicks',
+        data: days.length ? Object.values(data.clicksByDay) : [0],
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.15)',
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  const deviceLabels = Object.keys(data.clicksByDevice);
+  charts.device = new Chart(document.getElementById('deviceChart'), {
+    type: 'doughnut',
+    data: {
+      labels: deviceLabels.length ? deviceLabels : ['No data'],
+      datasets: [{ data: deviceLabels.length ? Object.values(data.clicksByDevice) : [1], backgroundColor: colorPalette(deviceLabels.length || 1) }]
+    }
+  });
+
+  const browserLabels = Object.keys(data.clicksByBrowser);
+  charts.browser = new Chart(document.getElementById('browserChart'), {
+    type: 'bar',
+    data: {
+      labels: browserLabels.length ? browserLabels : ['No data'],
+      datasets: [{ label: 'Clicks', data: browserLabels.length ? Object.values(data.clicksByBrowser) : [0], backgroundColor: '#22c55e' }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  const listEl = document.getElementById('referrerList');
+  if (!data.topReferrers || data.topReferrers.length === 0) {
+    listEl.innerHTML = '<div class="empty">No referrer data yet</div>';
+  } else {
+    listEl.innerHTML = data.topReferrers.map(r =>
+      `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">
+        <span style="color:var(--muted)">${r.referrer}</span><span>${r.count}</span>
+      </div>`
+    ).join('');
+  }
+}
+
+// Bootstrap: resume session if a token is already stored
+if (token && username) {
+  enterApp();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 16379   # deliberately unused port - forces Redis calls to fail fast in
+                     # unit tests that don't mock RedisTemplate, exercising the
+                     # fallback-to-MySQL paths instead of silently passing via a
+                     # real Redis instance that happens to be running locally.
+
+app:
+  base-url: http://localhost:8080
+  jwt:
+    secret: test-only-secret-key-not-for-production-use-1234567890
+    expiration-ms: 3600000
+  cors:
+    allowed-origins: http://localhost:8080
